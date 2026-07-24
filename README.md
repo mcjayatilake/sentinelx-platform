@@ -138,6 +138,11 @@ make typecheck          # run mypy + tsc
 
 - [Architecture](docs/architecture/ARCHITECTURE.md)
 - [Security & Authorization Model](docs/architecture/SECURITY.md)
+- [Database Architecture](docs/database-architecture.md)
+- [Data Model](docs/data-model.md)
+- [Tenant Isolation Strategy](docs/tenant-isolation.md)
+- [ADR 0001: Tenant Isolation & RLS](docs/decisions/0001-tenant-isolation-and-rls.md)
+- [Local Development — Database](docs/local-development.md)
 - [Coding Standards](docs/CODING_STANDARDS.md)
 - [Contributing](docs/CONTRIBUTING.md)
 

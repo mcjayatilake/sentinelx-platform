@@ -3,7 +3,7 @@ COMPOSE := docker compose
 
 .PHONY: help up down restart build logs ps \
         backend-shell frontend-shell db-shell \
-        migrate migrate-generate \
+        migrate migrate-generate seed \
         test test-backend test-frontend \
         lint lint-backend lint-frontend \
         fmt fmt-backend fmt-frontend \
@@ -52,6 +52,9 @@ migrate: ## Apply database migrations
 
 migrate-generate: ## Generate a new migration (usage: make migrate-generate name="add users table")
 	$(COMPOSE) exec backend alembic revision --autogenerate -m "$(name)"
+
+seed: ## Load development-only seed data (refuses to run in production)
+	$(COMPOSE) exec backend python -m app.db.seed
 
 ## --- Testing ---------------------------------------------------------------
 
