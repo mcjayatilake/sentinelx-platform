@@ -1,0 +1,27 @@
+# Local development overrides.
+#
+# Copy this file to `docker-compose.override.yml` (already gitignored) to get
+# hot-reloading for the frontend and a writable bind mount that skips
+# rebuilding the image on every change. Docker Compose automatically merges
+# `docker-compose.override.yml` on top of `docker-compose.yml`.
+
+services:
+  frontend:
+    build:
+      target: dev
+    command: ["npm", "run", "dev"]
+    environment:
+      NODE_ENV: development
+      WATCHPACK_POLLING: "true"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    ports:
+      - "3000:3000"
+
+  backend:
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    environment:
+      DEBUG: "true"
+      LOG_FORMAT: console
