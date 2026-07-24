@@ -53,9 +53,7 @@ async def liveness(settings: SettingsDep) -> HealthResponse:
     )
 
 
-@router.get(
-    "/health/ready", response_model=ReadinessResponse, summary="Kubernetes readiness probe"
-)
+@router.get("/health/ready", response_model=ReadinessResponse, summary="Kubernetes readiness probe")
 async def readiness(settings: SettingsDep, db: DbSessionDep) -> ReadinessResponse:
     database_status: Literal["ok", "unavailable"] = "ok"
     redis_status: Literal["ok", "unavailable"] = "ok"
