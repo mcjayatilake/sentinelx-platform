@@ -12,6 +12,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
+from app.db.session import engine
 
 settings = get_settings()
 configure_logging()
@@ -22,6 +23,7 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI):  # type: ignore[no-untyped-def]
     logger.info("app.startup", environment=settings.environment)
     yield
+    await engine.dispose()
     logger.info("app.shutdown")
 
 

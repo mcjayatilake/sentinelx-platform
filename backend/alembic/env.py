@@ -9,12 +9,10 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+# Registers every model on Base.metadata before autogeneration runs.
+from app import models  # noqa: F401
 from app.core.config import get_settings
 from app.db.base import Base
-
-# Import model modules here so they register on Base.metadata before
-# autogeneration runs, e.g.:
-#   from app.models import user  # noqa: F401
 
 config = context.config
 
