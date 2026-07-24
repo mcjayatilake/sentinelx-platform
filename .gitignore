@@ -1,0 +1,81 @@
+### Environment ###
+.env
+.env.local
+.env.*.local
+!.env.example
+
+### Python ###
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.installed.cfg
+*.egg
+.venv/
+venv/
+env/
+ENV/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.cover
+.hypothesis/
+
+### Alembic (keep migration scripts, ignore local db) ###
+*.sqlite3
+
+### Node / Next.js ###
+node_modules/
+.next/
+out/
+.turbo/
+next-env.d.ts
+.vercel
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+### Build artifacts ###
+dist/
+build/
+
+### Docker ###
+*.pid
+
+### IDE ###
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+
+### OS ###
+.DS_Store
+Thumbs.db
+
+### Logs ###
+logs/
+*.log
+
+### Storage / uploads (local S3-compatible dev data) ###
+.minio/
+storage-data/
+
+### Kubernetes local secrets ###
+infrastructure/kubernetes/**/secret.yaml
+!infrastructure/kubernetes/**/secret.yaml.example
+
+### Misc ###
+*.bak

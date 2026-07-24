@@ -1,0 +1,33 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: sentinelx-dev
+nameSuffix: -dev
+
+resources:
+  - ../../base
+
+configMapGenerator:
+  - name: sentinelx-config
+    behavior: merge
+    literals:
+      - ENVIRONMENT=development
+      - DEBUG=true
+      - LOG_FORMAT=console
+      - NEXT_PUBLIC_API_BASE_URL=https://api.dev.sentinelx.io/api/v1
+      - NEXT_PUBLIC_APP_ENV=development
+
+images:
+  - name: ghcr.io/sentinelx/backend
+    newTag: dev
+  - name: ghcr.io/sentinelx/frontend
+    newTag: dev
+
+patches:
+  - target:
+      kind: Deployment
+      name: "^(backend|frontend|worker)$"
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1

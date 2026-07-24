@@ -1,0 +1,33 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: sentinelx-staging
+nameSuffix: -staging
+
+resources:
+  - ../../base
+
+configMapGenerator:
+  - name: sentinelx-config
+    behavior: merge
+    literals:
+      - ENVIRONMENT=staging
+      - DEBUG=false
+      - LOG_FORMAT=json
+      - NEXT_PUBLIC_API_BASE_URL=https://api.staging.sentinelx.io/api/v1
+      - NEXT_PUBLIC_APP_ENV=staging
+
+images:
+  - name: ghcr.io/sentinelx/backend
+    newTag: staging
+  - name: ghcr.io/sentinelx/frontend
+    newTag: staging
+
+patches:
+  - target:
+      kind: Deployment
+      name: "^(backend|frontend|worker)$"
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 2
