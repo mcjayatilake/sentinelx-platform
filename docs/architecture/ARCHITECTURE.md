@@ -120,17 +120,30 @@ flowchart LR
   sourcing. Postgres, Redis, and object storage are expected to be managed
   services in staging/production rather than in-cluster StatefulSets.
 
-## 4. Request/job lifecycle (illustrative, not yet implemented)
+## 4. Request/job lifecycle
+
+Orchestration (steps 1-4, 6-7 below) is implemented as of the
+scan-engine-foundation phase — see [`docs/scan-engine.md`](../scan-engine.md)
+and [`docs/orchestrator.md`](../orchestrator.md). Step 5 (an actual
+scanner tool executing) is not: no individual scanner (ZAP, Nuclei,
+Trivy, ...) is implemented yet, only the plugin contract every future one
+implements — see [`docs/scanner-interface.md`](../scanner-interface.md).
 
 1. Client authenticates via `/api/v1/auth` (JWT + refresh token issued).
 2. Client registers an asset and its authorization scope.
-3. Client (or a scheduled trigger via Celery Beat) requests a scan.
-4. API validates authorization scope, persists a `ScanRun` record, and
-   enqueues a Celery task.
-5. A worker picks up the task, executes the relevant scan engine (in an
-   isolated container where required), streams findings to Postgres, and
-   uploads raw artifacts to S3.
-6. The frontend polls/subscribes (via React Query) for scan status and
+3. Client (or a scheduled trigger via Celery Beat, not yet implemented)
+   requests a scan via `POST /api/v1/scans`.
+4. The API validates the target project/asset belong to the caller's
+   tenant, persists a `Scan` record, transitions it to `QUEUED`, and
+   enqueues a Celery task (`app.workers.tasks.scan_tasks.execute_scan`).
+5. A worker picks up the task, resolves the relevant scanner plugin from
+   `ScannerRegistry` (empty until a scanner is registered), executes it
+   (in an isolated container where required), streams findings to
+   Postgres via the finding pipeline, and uploads raw artifacts to
+   storage (local filesystem today; S3-compatible planned).
+6. Progress is durably logged throughout and readable via
+   `GET /api/v1/scans/{id}/progress` at any point mid-run.
+7. The frontend polls/subscribes (via React Query) for scan status and
    renders findings and a generated report once complete.
 
 ## 5. Observability

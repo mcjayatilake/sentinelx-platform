@@ -73,6 +73,9 @@ logs/
 .minio/
 storage-data/
 
+### Scan engine local artifact storage (app.scan_engine.storage.local) ###
+backend/var/
+
 ### Kubernetes local secrets ###
 infrastructure/kubernetes/**/secret.yaml
 !infrastructure/kubernetes/**/secret.yaml.example

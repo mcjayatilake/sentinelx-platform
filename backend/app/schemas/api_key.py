@@ -5,6 +5,13 @@ key itself only ever appears on `APIKeyIssueResponse` — returned exactly
 once, at creation time, by `app.services.api_key_service`. There is no
 endpoint or repository method that can retrieve a plaintext key after
 that response.
+
+Deliberately no dependency on `app.core.permissions.Permission` here
+(scope validation lives at the endpoint layer instead — see
+`app.api.v1.endpoints.api_keys.create_api_key`): `app.core.permissions`
+imports `app.api.deps`, which imports this module transitively via
+`app.repositories.api_key_repository`, so importing it back from here
+would be circular.
 """
 
 from datetime import datetime

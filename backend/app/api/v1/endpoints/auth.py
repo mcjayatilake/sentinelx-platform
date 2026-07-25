@@ -11,12 +11,20 @@ logout. Domain errors from `AuthService` are handled globally — see
 import time
 import uuid
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
-from app.api.deps import AccessTokenPayloadDep, CurrentPrincipalDep, CurrentUserDep, DbSessionDep
+from app.api.deps import (
+    AccessTokenPayloadDep,
+    CurrentPrincipalDep,
+    CurrentUserDep,
+    DbSessionDep,
+    Principal,
+)
 from app.core.config import get_settings
 from app.core.rate_limit import get_client_ip, rate_limit
 from app.core.token_denylist import deny_token
+from app.models.enums import MembershipRole
+from app.models.user import User
 from app.schemas.auth import (
     ChangePasswordRequest,
     EmailVerifyConfirmRequest,
@@ -40,6 +48,21 @@ from app.services.auth_service import AuthService, RequestContext
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 _settings = get_settings()
+
+
+def _require_user_session(principal: Principal) -> tuple[User, MembershipRole]:
+    """`/auth/logout` and `/auth/me` are user-session concepts with no
+    meaning for an API-key-authenticated `Principal` — no user (a
+    service-account key), no refresh-token session to log out, no role
+    to report. Reject cleanly with a clear 401 rather than crash on a
+    `None` user/role, or (worse) silently act on the wrong identity if a
+    caller sent both an `X-API-Key` and an unrelated Bearer token."""
+    if principal.user is None or principal.role is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="This endpoint requires a user session (JWT), not an API key.",
+        )
+    return principal.user, principal.role
 
 
 def _request_context(request: Request) -> RequestContext:
@@ -81,8 +104,9 @@ async def logout(
     principal: CurrentPrincipalDep,
     payload: AccessTokenPayloadDep,
 ) -> None:
+    user, _role = _require_user_session(principal)
     await AuthService(session).logout(
-        principal.user, principal.tenant_id, data.refresh_token, _request_context(request)
+        user, principal.tenant_id, data.refresh_token, _request_context(request)
     )
 
     # The refresh-token family is now DB-revoked (above); the bearer
@@ -103,10 +127,11 @@ async def switch_tenant(
 
 @router.get("/me", response_model=MeResponse)
 async def me(principal: CurrentPrincipalDep) -> MeResponse:
+    user, role = _require_user_session(principal)
     return MeResponse(
-        user=UserRead.model_validate(principal.user),
+        user=UserRead.model_validate(user),
         tenant_id=principal.tenant_id,
-        role=principal.role,
+        role=role,
     )
 
 

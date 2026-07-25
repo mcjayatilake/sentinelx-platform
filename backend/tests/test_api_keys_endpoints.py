@@ -35,7 +35,7 @@ async def test_create_api_key_returns_plaintext_key_once(
     headers = await login_and_get_headers(auth_client, "keyowner@example.com", PASSWORD)
 
     response = await auth_client.post(
-        "/api/v1/api-keys", json={"name": "CI key", "scopes": ["scans:read"]}, headers=headers
+        "/api/v1/api-keys", json={"name": "CI key", "scopes": ["scans:view"]}, headers=headers
     )
     assert response.status_code == 201
     body = response.json()

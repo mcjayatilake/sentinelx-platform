@@ -76,12 +76,34 @@ What happens automatically:
 - Each test gets its own `db_session` fixture: a connection-level
   transaction that's always rolled back at teardown
   (`join_transaction_mode="create_savepoint"`), so tests never leak data
-  into each other and never need manual cleanup.
+  into each other and never need manual cleanup. It's built from two
+  smaller fixtures — `db_connection` (one connection, one real
+  transaction, rolled back at teardown) and `db_session_factory` (an
+  `async_sessionmaker` bound to that connection, savepoint-joined) — so a
+  test that needs more than one `Session` object sharing the same
+  underlying transaction (e.g. `auth_client`'s per-request session
+  minting — see `docs/decisions/0008-transaction-and-concurrency-model.md`)
+  can depend on `db_session_factory` directly instead of `db_session`.
+- **`real_session_factory`** is the other fixture, for a different job:
+  genuinely independent connections with real commits, no SAVEPOINT
+  wrapping. Every test that needs to prove something is actually
+  cross-connection — commit visibility, lock contention, a `SELECT ...
+  FOR UPDATE SKIP LOCKED` claim race, two connections racing the same
+  conditional `UPDATE` — uses `real_session_factory`, never `db_session`
+  (a single, savepoint-wrapped connection cannot produce a genuine race,
+  only simulate one within a single transaction — see the module
+  docstrings on `tests/test_scan_concurrency_races.py`,
+  `tests/test_scan_progress_durability.py`, and
+  `tests/test_scan_outbox_dispatcher.py`). Tests using it clean up their
+  own rows explicitly in a `finally` block — there's no automatic
+  rollback safety net.
 - `db_engine` is function-scoped, not session-scoped — deliberately, to
   avoid a known pytest-asyncio pitfall where a session-scoped async engine
   gets bound to the first test's event loop and breaks on every test after
   it. See the comment in `tests/conftest.py` if you're tempted to "optimize"
-  this back to session scope.
+  this back to session scope. `app.db.session.reset_engine()` solves the
+  same problem for the production engine the `client` fixture exercises
+  (disposed and rebuilt before/after each test that uses it).
 
 ### Environment variables the test suite needs
 
@@ -89,13 +111,40 @@ What happens automatically:
 DATABASE_URL=postgresql+asyncpg://sentinelx:sentinelx@localhost:5432/sentinelx_test
 DATABASE_URL_SYNC=postgresql+psycopg://sentinelx:sentinelx@localhost:5432/sentinelx_test
 JWT_SECRET_KEY=test-secret
-REDIS_URL=redis://localhost:6379/0   # only needed for the readiness-endpoint tests
+REDIS_URL=redis://localhost:6379/0
+CELERY_BROKER_URL=redis://localhost:6379/1
+CELERY_RESULT_BACKEND=redis://localhost:6379/2
 ```
+
+A real Redis instance is required, not just for the readiness-endpoint
+tests — the outbox dispatcher tests
+(`tests/test_scan_outbox_dispatcher.py`) and any test that exercises
+`CeleryJobQueue` publish real Celery messages to the configured broker.
+`settings.celery_task_always_eager` stays `False` for these tests
+deliberately; a real broker round-trip is the point, not something to
+mock away.
 
 CI (`.github/workflows/backend-ci.yml`) provisions a `postgres:16-alpine`
 and `redis:7-alpine` service container with matching credentials — see
 that file for the exact values if you want your local setup to match
 exactly.
+
+### Running Postgres/Redis locally without Docker Compose
+
+If a Docker daemon isn't available in your environment, both services
+can run as plain local processes — nothing about the test suite requires
+containers specifically, only that something is actually listening on
+the configured `DATABASE_URL`/`REDIS_URL`/`CELERY_BROKER_URL`:
+
+```bash
+# Debian/Ubuntu-style package names; adjust for your distro.
+service postgresql start          # or: pg_ctlcluster <version> main start
+redis-server --daemonize yes
+```
+
+Then create the role/database the test settings expect (matching the
+values above) and run `alembic upgrade head` once, or just run the test
+suite — the `_run_migrations` autouse fixture does it for you.
 
 ## Direct database access
 

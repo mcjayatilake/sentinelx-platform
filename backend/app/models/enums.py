@@ -75,12 +75,23 @@ class AuthorizationStatus(StrEnum):
 
 
 class ScanStatus(StrEnum):
+    """The scan-engine state machine (see `app.scan_engine.state_machine`
+    for the enforced transition table). `SUCCEEDED` is this enum's name
+    for the scan-engine spec's "Completed" terminal state — kept as-is
+    rather than renamed, since it's an already-migrated value asserted by
+    `test_scan_repository.py`; see docs/decisions/0007-scan-state-machine.md.
+    """
+
     PENDING = "pending"
     QUEUED = "queued"
+    PREPARING = "preparing"
     RUNNING = "running"
+    COLLECTING = "collecting"
+    PROCESSING = "processing"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     CANCELLED = "cancelled"
+    TIMED_OUT = "timed_out"
 
 
 class FindingSeverity(StrEnum):

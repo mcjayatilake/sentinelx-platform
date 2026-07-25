@@ -30,10 +30,19 @@ permissions, see [`docs/rbac.md`](rbac.md). For API keys, see
   (see `docs/rbac.md`) and a `status` (`ACTIVE`/`INVITED`/`SUSPENDED`/`REMOVED`).
   A user may belong to multiple tenants.
 - **`Principal`** (`app.api.deps.Principal`) — the resolved identity of an
-  authenticated, tenant-scoped request: `user`, `tenant_id`, `role`.
-  `tenant_id`/`role` always come from a verified access-token claim plus a
-  live `TenantMembership` re-check — **never from a client-supplied
-  header, query parameter, or path parameter.**
+  authenticated, tenant-scoped request: `user`, `tenant_id`, and either
+  `role` (a JWT/user-session principal) or `scopes` (an API-key
+  principal — see [`docs/api-keys.md`](api-keys.md)), mutually exclusive
+  by construction. `tenant_id` always comes from a verified source — the
+  access token's own claim plus a live `TenantMembership` re-check, or
+  the API key's own stored `tenant_id` — **never from a client-supplied
+  header, query parameter, or path parameter.** Every request is also
+  re-checked against `Tenant.status`: a suspended/archived tenant is
+  rejected immediately, through either authentication path, not just at
+  its next token refresh (see
+  [ADR 0008](decisions/0008-transaction-and-concurrency-model.md#8-inactive-tenant-enforcement-and-api-key-authentication)).
+  `user` is `None` for a tenant-level service-account API key not bound
+  to any specific user.
 
 ## Endpoints
 

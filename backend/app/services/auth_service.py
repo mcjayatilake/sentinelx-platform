@@ -248,6 +248,12 @@ class AuthService:
                     user_agent=context.user_agent,
                 )
             )
+            # Deliberate mid-request commit (see _record_failed_login):
+            # revoking a stolen refresh-token family is a security action
+            # that must survive even though this request ends in a raised
+            # error and the request-boundary transaction policy would
+            # otherwise roll it back.
+            await self._session.commit()
             raise RefreshTokenReuseDetectedError()
 
         if token.status == RefreshTokenStatus.REVOKED or token.expires_at <= datetime.now(UTC):
@@ -381,6 +387,10 @@ class AuthService:
                     outcome=AuditOutcome.FAILURE,
                 )
             )
+            # Deliberate mid-request commit (see _record_failed_login):
+            # this audit record must survive the enclosing request-boundary
+            # rollback triggered by the raise below.
+            await self._session.commit()
             raise InvalidVerificationTokenError()
 
         await self._check_password_policy(new_password)
@@ -426,6 +436,10 @@ class AuthService:
                     outcome=AuditOutcome.FAILURE,
                 )
             )
+            # Deliberate mid-request commit (see _record_failed_login):
+            # this audit record must survive the enclosing request-boundary
+            # rollback triggered by the raise below.
+            await self._session.commit()
             raise InvalidVerificationTokenError()
 
         user = await self._users.get_by_id(token.user_id)
@@ -488,6 +502,16 @@ class AuthService:
                 user_agent=context.user_agent,
             )
         )
+        # Deliberate mid-request commit, not a scattered one: every caller
+        # of this method raises immediately afterward (InvalidCredentialsError
+        # / AccountInactiveError), and app.db.session.get_db()'s request-
+        # boundary transaction policy (see docs/decisions/0008) rolls back
+        # on any exception escaping the endpoint. A failed-login audit
+        # record is independent security telemetry — see docs/security.md's
+        # "enumeration resistance" section — that must survive regardless
+        # of the request's own outcome, so it is committed here explicitly
+        # rather than lost to the enclosing rollback.
+        await self._session.commit()
 
     def _resolve_tenant(
         self, memberships: list[TenantMembership], requested_tenant_id: uuid.UUID | None

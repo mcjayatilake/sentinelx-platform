@@ -16,7 +16,7 @@ celery_app = Celery(
     "sentinelx",
     broker=settings.celery_broker_url,
     backend=settings.celery_result_backend,
-    include=[],  # task modules are registered here as they're implemented
+    include=["app.workers.tasks.scan_tasks", "app.workers.tasks.outbox_dispatcher"],
 )
 
 celery_app.conf.update(
@@ -28,5 +28,10 @@ celery_app.conf.update(
     enable_utc=True,
     task_track_started=True,
     worker_max_tasks_per_child=200,
-    beat_schedule={},  # scheduled continuous-monitoring jobs are added here
+    beat_schedule={
+        "dispatch-pending-scan-outbox": {
+            "task": "app.workers.tasks.outbox_dispatcher.dispatch_pending_outbox",
+            "schedule": settings.scan_outbox_dispatch_interval_seconds,
+        },
+    },
 )

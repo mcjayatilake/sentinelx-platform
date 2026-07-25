@@ -101,6 +101,25 @@ class Settings(BaseSettings):
     s3_bucket_name: str = "sentinelx-artifacts"
     s3_use_ssl: bool = False
 
+    # Scan engine — orchestration defaults (app.scan_engine); see
+    # docs/scan-engine.md and docs/orchestrator.md.
+    scan_default_timeout_seconds: int = 1800
+    scan_default_max_attempts: int = 3
+    scan_retry_backoff_base_seconds: float = 5.0
+    scan_retry_backoff_max_seconds: float = 300.0
+    scan_config_max_bytes: int = 16384
+    scan_event_metadata_max_bytes: int = 8192
+    scan_queue_name: str = "scans"
+    scan_dead_letter_queue_name: str = "scans.dead_letter"
+    # Outbox dispatcher (app.workers.tasks.outbox_dispatcher) — see
+    # docs/decisions/0008-transaction-and-concurrency-model.md.
+    scan_outbox_dispatch_interval_seconds: float = 2.0
+    scan_outbox_dispatch_batch_size: int = 50
+
+    # Scan artifact storage — see app.scan_engine.storage
+    artifact_storage_backend: Literal["local"] = "local"
+    artifact_storage_local_path: str = "./var/scan-artifacts"
+
     # Observability
     sentry_dsn: str | None = None
     otel_exporter_otlp_endpoint: str | None = None

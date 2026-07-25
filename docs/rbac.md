@@ -30,13 +30,17 @@ class Permission(StrEnum):
     API_KEYS_VIEW = "api_keys:view"
     API_KEYS_MANAGE = "api_keys:manage"
     AUDIT_VIEW = "audit:view"
+    SCANS_VIEW = "scans:view"
+    SCANS_MANAGE = "scans:manage"  # create/cancel/retry — every scan-lifecycle write
 
 ROLE_PERMISSIONS: dict[MembershipRole, frozenset[Permission]] = {
     MembershipRole.OWNER: frozenset(Permission),          # everything
     MembershipRole.ADMINISTRATOR: frozenset(Permission),  # everything
-    MembershipRole.SECURITY_ANALYST: {MEMBERS_VIEW, API_KEYS_VIEW, AUDIT_VIEW},
-    MembershipRole.DEVELOPER: {MEMBERS_VIEW, API_KEYS_VIEW},
-    MembershipRole.VIEWER: {MEMBERS_VIEW},
+    MembershipRole.SECURITY_ANALYST: {
+        MEMBERS_VIEW, API_KEYS_VIEW, AUDIT_VIEW, SCANS_VIEW, SCANS_MANAGE,
+    },
+    MembershipRole.DEVELOPER: {MEMBERS_VIEW, API_KEYS_VIEW, SCANS_VIEW, SCANS_MANAGE},
+    MembershipRole.VIEWER: {MEMBERS_VIEW, SCANS_VIEW},
 }
 ```
 
@@ -61,7 +65,19 @@ async def create_api_key(..., principal: CurrentPrincipalDep) -> ...:
 
 `require_permission(Permission.X)` returns a FastAPI dependency that
 resolves `CurrentPrincipalDep` (see `docs/authentication.md`) and raises
-`403` if `has_permission(principal.role, Permission.X)` is `False`.
+`403` if `principal_has_permission(principal, Permission.X)` is `False`.
+
+`principal_has_permission` (`app/core/permissions.py`) is the single
+dispatch point that handles both principal types this platform now
+authenticates: for a JWT (user-session) principal it's exactly
+`has_permission(principal.role, permission)`, unchanged; for an
+API-key principal it checks `permission.value in principal.scopes`
+instead, and — deliberately — **never** falls back to a role-based
+grant, so a key structurally cannot exceed the scopes it was actually
+issued (see `docs/api-keys.md`'s "Scopes" section and
+[ADR 0008](decisions/0008-transaction-and-concurrency-model.md#8-inactive-tenant-enforcement-and-api-key-authentication)).
+`role` and `scopes` are mutually exclusive on a `Principal` by
+construction — exactly one of them is ever set.
 
 It's wired as a **router-level `dependencies=[...]` entry**, not as the
 value bound to the `principal` parameter — mixing
@@ -82,6 +98,7 @@ applied consistently across `api_keys.py`, `memberships.py`, and
 | Tenant memberships | `MEMBERS_VIEW` (list) | `MEMBERS_MANAGE` (add/role-change/remove) |
 | API keys | `API_KEYS_VIEW` (list) | `API_KEYS_MANAGE` (create/revoke/rotate) |
 | Audit events | `AUDIT_VIEW` (list) | — (append-only; nothing to manage) |
+| Scans | `SCANS_VIEW` (list/get/progress) | `SCANS_MANAGE` (create/cancel/retry) |
 
 Every mutation additionally writes an `AuditEvent` — see
 `docs/security.md`'s audit section for the full list of automatically
@@ -106,7 +123,3 @@ independent, composed checks, not one mechanism.
 - Inviting a brand-new email address (no existing `User` account) to a
   tenant — `POST /memberships` currently only adds an *existing* user by
   email; a real invitation-email flow is separate scope.
-- Per-scope API key permission enforcement (see `docs/api-keys.md`'s
-  "Scopes" section) — `APIKeyMetadata.scopes` is persisted but not
-  enforced against any action yet, since there are no scannable/product
-  endpoints for scopes to gate in this phase.

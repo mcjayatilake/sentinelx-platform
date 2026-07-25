@@ -61,12 +61,25 @@ unknown prefix, wrong secret, revoked, and expired all look identical to
 the caller, so a response can't be used to probe for valid prefixes or
 learn a key's state.
 
-There is currently no FastAPI dependency that authenticates a *request*
-via an API key (e.g. an `X-API-Key` header alternative to the JWT bearer
-flow) — `authenticate()` is service-layer only, ready for that dependency
-to be added when a product endpoint needs it. This phase implements
-issuance/verification/lifecycle, not a second authentication scheme
-wired into every endpoint.
+**`X-API-Key` is now a real request-authentication path**
+(`app.api.deps._principal_from_api_key`, wired into `get_current_principal`
+— see [ADR 0008](decisions/0008-transaction-and-concurrency-model.md#8-inactive-tenant-enforcement-and-api-key-authentication)).
+If a request carries an `X-API-Key` header, it is authenticated
+exclusively through it — any `Authorization: Bearer` sent alongside is
+ignored, a simple deterministic rule. The `last_used_at` bump commits in
+its own short transaction immediately, rather than being held for the
+rest of the request, so one automation key receiving many concurrent
+requests never serializes behind whichever request's `UPDATE` landed
+first. The tenant-active gate (`docs/security.md`) applies identically
+to an API-key principal as it does to a JWT one — a suspended/archived
+tenant's keys stop working immediately, not at their next issuance
+check.
+
+A tenant-level service-account key (`APIKeyMetadata.user_id IS NULL`)
+resolves to a `Principal` with `user=None` — endpoints that are
+inherently user-session concepts (`/auth/me`, `/auth/logout`) reject an
+API-key-authenticated principal outright rather than crash on a missing
+user.
 
 ## Lifecycle
 
@@ -84,9 +97,19 @@ wired into every endpoint.
 
 ## Scopes
 
-`APIKeyMetadata.scopes` (`list[str]`) is persisted and returned but **not
-yet enforced** anywhere — no endpoint checks a caller's key scopes against
-an action. This is intentionally deferred: there are no scannable/product
-endpoints yet for scopes to gate (this phase is auth/authorization
-infrastructure only, per its own scope). The column and schema exist so a
-future scope-enforcement layer doesn't require a migration.
+`APIKeyMetadata.scopes` (`list[str]`) is now **enforced** through the same
+central permission mechanism every other principal type uses.
+`app.core.permissions.principal_has_permission()` is the single dispatch
+point `require_permission` calls: for an API-key principal, it checks
+`permission.value in principal.scopes` and **never** falls back to a
+role-based grant — a key structurally cannot exceed what it was issued,
+regardless of how permissive the issuing tenant's own roles are (see
+[ADR 0008](decisions/0008-transaction-and-concurrency-model.md#8-inactive-tenant-enforcement-and-api-key-authentication)).
+
+Scope values are the same strings as `app.core.permissions.Permission`
+(e.g. `"scans:view"`, `"scans:manage"`) and are **validated at
+issuance time** (`POST /api-keys` — see
+`app.api.v1.endpoints.api_keys._validate_scopes`), not just checked
+later: an unknown scope string is rejected with `422` before it can ever
+be stored, so nothing invalid can end up on a key in the first place.
+An empty `scopes: []` (the default) grants nothing.

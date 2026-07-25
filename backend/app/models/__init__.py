@@ -13,6 +13,8 @@ from app.models.membership import TenantMembership
 from app.models.project import Project
 from app.models.refresh_token import RefreshToken
 from app.models.scan import Scan
+from app.models.scan_event import ScanEvent
+from app.models.scan_job_outbox import ScanJobOutbox
 from app.models.tenant import Tenant
 from app.models.user import User
 from app.models.verification_token import UserVerificationToken
@@ -27,6 +29,8 @@ __all__ = [
     "Project",
     "RefreshToken",
     "Scan",
+    "ScanEvent",
+    "ScanJobOutbox",
     "Tenant",
     "User",
     "UserVerificationToken",
