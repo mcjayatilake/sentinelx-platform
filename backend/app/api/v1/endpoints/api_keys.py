@@ -16,7 +16,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.api.deps import CurrentPrincipalDep, DbSessionDep
+from app.api.deps import CurrentPrincipalDep, DbSessionDep, Principal
 from app.core.config import get_settings
 from app.core.permissions import Permission, require_permission
 from app.core.rate_limit import rate_limit
@@ -31,7 +31,31 @@ from app.services.api_key_service import APIKeyService
 
 router = APIRouter(prefix="/api-keys", tags=["api-keys"])
 
+
+def _actor_user_id(principal: Principal) -> uuid.UUID | None:
+    """An API-key-authenticated `Principal` may have no bound user (a
+    tenant-level service-account key) — `AuditEvent.actor_user_id` is
+    nullable for exactly this reason."""
+    return principal.user.id if principal.user is not None else None
+
+
 _settings = get_settings()
+_VALID_SCOPE_VALUES = frozenset(p.value for p in Permission)
+
+
+def _validate_scopes(scopes: list[str]) -> None:
+    """Rejects an unknown scope string at issuance time — not just when
+    something later tries to *check* it — which is what makes "a key can
+    never gain permissions beyond its stored scopes" (see
+    `app.core.permissions.principal_has_permission`) actually true:
+    nothing invalid can ever be stored in the first place."""
+    unknown = sorted(s for s in scopes if s not in _VALID_SCOPE_VALUES)
+    if unknown:
+        valid = sorted(_VALID_SCOPE_VALUES)
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Unknown scope(s): {unknown!r}. Must be one of {valid!r}.",
+        )
 
 
 @router.post(
@@ -50,13 +74,14 @@ _settings = get_settings()
 async def create_api_key(
     data: APIKeyIssueRequest, session: DbSessionDep, principal: CurrentPrincipalDep
 ) -> APIKeyIssueResponse:
+    _validate_scopes(data.scopes)
     response = await APIKeyService(APIKeyMetadataRepository(session)).issue(
-        tenant_id=principal.tenant_id, user_id=principal.user.id, data=data
+        tenant_id=principal.tenant_id, user_id=_actor_user_id(principal), data=data
     )
     await AuditEventRepository(session).create(
         AuditEventCreate(
             tenant_id=principal.tenant_id,
-            actor_user_id=principal.user.id,
+            actor_user_id=_actor_user_id(principal),
             action="api_key.create",
             resource_type="api_key",
             resource_id=str(response.id),
@@ -111,7 +136,7 @@ async def revoke_api_key(
     await AuditEventRepository(session).create(
         AuditEventCreate(
             tenant_id=principal.tenant_id,
-            actor_user_id=principal.user.id,
+            actor_user_id=_actor_user_id(principal),
             action="api_key.revoke",
             resource_type="api_key",
             resource_id=str(record.id),
@@ -131,14 +156,14 @@ async def rotate_api_key(
 ) -> APIKeyIssueResponse:
     record = await _get_owned_api_key(session, principal, api_key_id)
     response = await APIKeyService(APIKeyMetadataRepository(session)).rotate(
-        tenant_id=principal.tenant_id, user_id=principal.user.id, record=record
+        tenant_id=principal.tenant_id, user_id=_actor_user_id(principal), record=record
     )
 
     audit_events = AuditEventRepository(session)
     await audit_events.create(
         AuditEventCreate(
             tenant_id=principal.tenant_id,
-            actor_user_id=principal.user.id,
+            actor_user_id=_actor_user_id(principal),
             action="api_key.revoke",
             resource_type="api_key",
             resource_id=str(record.id),
@@ -149,7 +174,7 @@ async def rotate_api_key(
     await audit_events.create(
         AuditEventCreate(
             tenant_id=principal.tenant_id,
-            actor_user_id=principal.user.id,
+            actor_user_id=_actor_user_id(principal),
             action="api_key.create",
             resource_type="api_key",
             resource_id=str(response.id),

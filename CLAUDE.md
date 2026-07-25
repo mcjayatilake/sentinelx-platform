@@ -137,6 +137,83 @@ for the full design; this is the enforceable summary.
    deliberate enumeration resistance (see `docs/security.md`) — do not
    "fix" it to be more informative.
 
+## Scan engine development rules
+
+These rules exist because scan orchestration is concurrent, multi-worker,
+and drives durable state across a long-lived transaction — the failure
+modes are subtle (races, silent no-retries, stale reads), not style nits.
+See [`docs/scan-engine.md`](docs/scan-engine.md),
+[`docs/orchestrator.md`](docs/orchestrator.md), and
+[`docs/scanner-interface.md`](docs/scanner-interface.md) for the full
+design; this is the enforceable summary.
+
+1. **`ScanStateMachine.transition()` is the sole sanctioned way to mutate
+   `Scan.status` anywhere in this codebase.** Never `scan.status = X`
+   directly. See ADR 0007. A transition not already listed in
+   `_VALID_TRANSITIONS` needs a deliberate edge added, not a workaround.
+
+2. **A new scanner is a `ScannerPlugin` implementation plus one
+   `registry.register(...)` call in
+   `app.scan_engine.bootstrap.build_default_registry()` — nothing else.**
+   If adding a scanner requires touching `ScanOrchestrator`,
+   `ScanStateMachine`, or `FindingPipeline`, that's a sign the plugin is
+   leaking scanner-specific logic into generic orchestration code (see
+   ADR 0005) — fix the plugin, not the orchestrator.
+
+3. **Never call `FindingRepository`/`AuditEventRepository` directly from
+   a `ScannerPlugin`.** A plugin returns `NormalizedFinding`s from
+   `normalize_findings()`; only `FindingPipeline.process()` (called by
+   the orchestrator) touches those repositories. This is what keeps
+   dedup/audit/event logic in one place instead of duplicated per
+   scanner.
+
+4. **`app.scan_engine` must never import from `app.workers` (or
+   `celery` directly).** The dependency only ever points one way:
+   `app.workers.tasks.scan_tasks` calls into
+   `app.scan_engine.orchestrator`, never the reverse. `JobQueue`
+   (`app.scan_engine.job_queue`) is the Celery-free seam; `CeleryJobQueue`
+   (`app.workers.job_queue_celery`) is the concrete adapter on the other
+   side of it.
+
+5. **Retry *decisions* live in `app.scan_engine.retry.RetryPolicy`, never
+   in Celery's own `self.retry()`/`autoretry_for`.** `JobQueue` only ever
+   does what it's told (`enqueue_scan`/`cancel`/`dead_letter_scan`) — this
+   is what lets a future non-Celery job queue swap in with zero
+   orchestrator changes.
+
+6. **`max_attempts` is per-scan (`Scan.max_attempts`), read at retry-
+   decision time — never bake a fixed attempt limit into `RetryPolicy`
+   itself.** `RetryPolicy.should_retry(attempt, max_attempts)` takes it
+   as an argument for exactly this reason; a policy-level `max_attempts`
+   field was a real bug caught by `tests/test_scan_orchestrator.py`
+   during this phase (a scan's own configured limit was silently
+   ignored).
+
+7. **A repository method a long-lived session depends on for detecting
+   externally-committed changes (e.g. `ScanRepository.get_by_id()`,
+   which the orchestrator's cooperative-cancellation check relies on)
+   must use `execution_options(populate_existing=True)`.** Without it,
+   SQLAlchemy's identity map silently returns a stale, already-loaded
+   object instead of refreshing it from a fresh `SELECT` — see
+   `docs/orchestrator.md#cancellation`.
+
+8. **`ScanStateMachine` is a unit-of-work class, not a repository —
+   database rule 9 ("repositories never commit") does not apply to it.**
+   It takes a session at construction and commits internally after every
+   successful conditional transition, deliberately: its whole purpose
+   (see [ADR 0008](docs/decisions/0008-transaction-and-concurrency-model.md))
+   is bounding how long a `Scan` row's write lock is held, which only
+   works if `transition()` itself is the commit boundary. Do not "fix"
+   this by moving the commit out to a caller.
+
+9. **`ScanOutboxRepository.claim_next_pending()` is deliberately not
+   tenant-scoped**, the same carve-out `TenantRepository.list_all()`
+   already documents for the one other legitimately platform-wide
+   repository method in this codebase: the outbox dispatcher is a
+   background process with no tenant context of its own to filter by —
+   it drains pending rows across every tenant by design. Every other
+   `ScanOutboxRepository` method still requires `tenant_id`.
+
 ## Where things live
 
 ```
@@ -144,11 +221,15 @@ backend/app/
 ├── models/         SQLAlchemy ORM — one file per entity, enums.py, mixins.py
 ├── schemas/         Pydantic Create/Update/Read — never expose ORM models directly
 ├── repositories/     One explicit class per entity, tenant-scoped where applicable
-├── services/        Business orchestration (auth, API keys, email) — the only
-│                     place that constructs multi-step flows across repositories
+├── services/        Business orchestration (auth, API keys, email, scans) — the
+│                     only place that constructs multi-step flows across repositories
 ├── api/
 │   ├── deps.py        Shared FastAPI dependencies (current user/principal, db session)
 │   └── v1/endpoints/  One router module per resource
+├── scan_engine/      Plugin contract, orchestrator, event system, retry, storage,
+│                       finding pipeline — see docs/scan-engine.md. No Celery import.
+├── workers/          Celery app factory, JobQueue adapter, tasks/ — the only
+│                       code that imports both Celery and app.scan_engine
 └── db/
     ├── base.py        Declarative Base + naming convention
     ├── session.py      Async engine/session

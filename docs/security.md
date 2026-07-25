@@ -39,6 +39,13 @@ is resolved once at login/switch-tenant from a verified `TenantMembership`
 row, embedded as a signed JWT claim, and re-verified against the live
 membership on every subsequent request
 (`app.api.deps.get_current_principal`) — see `docs/authentication.md`.
+An API-key principal's `tenant_id` likewise comes only from the key's own
+stored value, never a client-supplied header/path/body field. **Every
+request also re-checks `Tenant.status`** (`_ensure_tenant_active`,
+identical for both authentication paths) — a suspended or archived
+tenant loses access immediately, on its very next request, not at its
+existing tokens' next expiry (see
+[ADR 0008](decisions/0008-transaction-and-concurrency-model.md#8-inactive-tenant-enforcement-and-api-key-authentication)).
 This is layered on top of the database-layer tenant isolation from the
 prior phase (repository-contract `tenant_id` requirements + composite
 foreign keys, see `docs/tenant-isolation.md`); RBAC (`docs/rbac.md`) is a
@@ -126,6 +133,32 @@ is true (default):
 | `Content-Security-Policy` | `SECURITY_CSP_POLICY` (default `default-src 'self'`) |
 | `Strict-Transport-Security` | `max-age=SECURITY_HSTS_MAX_AGE_SECONDS; includeSubDomains` — **HTTPS responses only** (setting it on plain HTTP is a spec no-op but misleading, so it's deliberately omitted for local/plain-HTTP dev) |
 
+## Error handling and secret sanitization
+
+Two independent mechanisms, for two different surfaces — see
+[ADR 0008](decisions/0008-transaction-and-concurrency-model.md#7-central-error-sanitization-boundary)
+for the full design:
+
+- **Persisted/API-facing** (`app.core.error_sanitization.
+  sanitize_exception`): a caught scan-engine exception's raw message
+  never reaches `Scan.error_summary`, the `ScanFailed` domain event, the
+  `GET /scans/{id}` API response, or `ScanJobOutbox.last_error`. A
+  static, type-name-driven lookup maps the exception's *type* to a fixed
+  category and a fixed generic sentence — it never reads `str(exc)` or
+  `exc.args`, so it cannot leak content it never inspects in the first
+  place. No stack trace is ever exposed to an API client.
+- **Structured logs** (`app.core.log_redaction.redact_log_secrets`): the
+  operator-only surface, where full diagnostic detail is still wanted —
+  applied to every log line app-wide, this regex-redacts known secret
+  shapes (bearer tokens, `Authorization`/`Cookie` header lines, the
+  `sx_<prefix>.<secret>` API-key format, JWT-shaped strings,
+  `password=`/`token=`/`secret=`/`api_key=` key-value pairs, credentials
+  embedded in a URL) and redacts by structured-field *name* at any
+  nesting depth, independent of the value's shape. Explicitly
+  defense-in-depth, not the primary control — the sanitization boundary
+  above already keeps raw exception text off every other surface before
+  it would reach a log call.
+
 ## Configuration & secrets
 
 Environment-driven via `Settings` (`app/core/config.py`); see
@@ -139,8 +172,8 @@ committed.
 
 See "Known limitations / future work" in `docs/authentication.md` and
 "Future work" in `docs/rbac.md` for the full list (no OAuth2/SSO wiring,
-no breached-password check active, no refresh-token pruning job, no API
-key scope enforcement, no Owner-vs-Administrator distinction). RLS
+no breached-password check active, no refresh-token pruning job, no
+Owner-vs-Administrator distinction). RLS
 remains deferred per [ADR 0001](decisions/0001-tenant-isolation-and-rls.md) —
 this phase satisfies that ADR's stated trigger condition (an
 authenticated request/session layer now exists) but does not itself

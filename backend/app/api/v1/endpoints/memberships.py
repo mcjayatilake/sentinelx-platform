@@ -9,7 +9,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.api.deps import CurrentPrincipalDep, DbSessionDep
+from app.api.deps import CurrentPrincipalDep, DbSessionDep, Principal
 from app.core.permissions import Permission, require_permission
 from app.models.enums import AuditOutcome, MembershipStatus
 from app.repositories.audit_event_repository import AuditEventRepository
@@ -25,6 +25,13 @@ from app.schemas.membership import (
 )
 
 router = APIRouter(prefix="/memberships", tags=["memberships"])
+
+
+def _actor_user_id(principal: Principal) -> uuid.UUID | None:
+    """An API-key-authenticated `Principal` may have no bound user (a
+    tenant-level service-account key) — `AuditEvent.actor_user_id` is
+    nullable for exactly this reason."""
+    return principal.user.id if principal.user is not None else None
 
 
 @router.get(
@@ -86,7 +93,7 @@ async def add_member(
     await AuditEventRepository(session).create(
         AuditEventCreate(
             tenant_id=principal.tenant_id,
-            actor_user_id=principal.user.id,
+            actor_user_id=_actor_user_id(principal),
             action="membership.add",
             resource_type="tenant_membership",
             resource_id=str(membership.id),
@@ -120,7 +127,7 @@ async def update_membership(
         await AuditEventRepository(session).create(
             AuditEventCreate(
                 tenant_id=principal.tenant_id,
-                actor_user_id=principal.user.id,
+                actor_user_id=_actor_user_id(principal),
                 action="membership.role_change",
                 resource_type="tenant_membership",
                 resource_id=str(membership.id),
@@ -153,7 +160,7 @@ async def remove_member(
     await AuditEventRepository(session).create(
         AuditEventCreate(
             tenant_id=principal.tenant_id,
-            actor_user_id=principal.user.id,
+            actor_user_id=_actor_user_id(principal),
             action="membership.remove",
             resource_type="tenant_membership",
             resource_id=str(membership.id),

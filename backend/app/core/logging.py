@@ -13,6 +13,7 @@ from typing import Any, cast
 import structlog
 
 from app.core.config import get_settings
+from app.core.log_redaction import redact_log_secrets
 
 _CONFIGURED = False
 
@@ -33,6 +34,11 @@ def configure_logging() -> None:
         structlog.processors.TimeStamper(fmt="iso"),
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
+        # After format_exc_info (so rendered stack traces are covered
+        # too) and before the renderer, applied to every log line via
+        # both `structlog.configure()` and `foreign_pre_chain` below —
+        # see app.core.log_redaction for what this catches and why.
+        redact_log_secrets,
     ]
 
     if settings.log_format == "json":
