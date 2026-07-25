@@ -74,6 +74,69 @@ security data. Violating them is a security issue, not a style nit.
     fixture pattern (`db_session`, `db_engine`) and a known
     pytest-asyncio pitfall it works around.
 
+11. **`Base` uses `__mapper_args__ = {"eager_defaults": True}`
+    (`backend/app/db/base.py`) — do not remove it.** Without it, a
+    server-generated/`onupdate` column (`created_at`, `updated_at`)
+    accessed after a flush inside an async request — e.g. serializing to
+    a Pydantic schema right after a service-layer create-then-update —
+    raises `MissingGreenlet`, since `AsyncSession` only permits DB IO from
+    an awaited call and a later plain attribute access isn't one.
+
+## Authentication / authorization rules
+
+These rules exist because getting auth wrong is a direct security
+incident, not a style nit. See
+[`docs/authentication.md`](docs/authentication.md),
+[`docs/rbac.md`](docs/rbac.md), and [`docs/security.md`](docs/security.md)
+for the full design; this is the enforceable summary.
+
+1. **Passwords: Argon2id only, via `app.core.security.hash_password`/
+   `verify_password`.** Never hash a password with anything else, never
+   log or return one (raw or hashed) in a request/response, never add a
+   `deprecated="auto"` fallback scheme without a real pre-existing corpus
+   of hashes in that scheme to support (there wasn't one when bcrypt was
+   removed from the `CryptContext` — see ADR 0002).
+
+2. **High-entropy random secrets (refresh tokens, API key secrets,
+   verification/reset tokens) are SHA-256-hashed via
+   `app.core.security.hash_secret`, never Argon2id-hashed.** These are
+   two different threat models (see ADR 0004) — do not "unify" them.
+
+3. **No endpoint may resolve `tenant_id` from a client-supplied header,
+   query parameter, or path parameter.** Use `CurrentPrincipalDep`
+   (`principal.tenant_id`), which comes from a verified access-token
+   claim plus a live `TenantMembership` re-check
+   (`app.api.deps.get_current_principal`). This is the same discipline as
+   rule 1 above (repository `tenant_id` argument), applied one layer up.
+
+4. **No endpoint hand-rolls a role/permission check.** Use
+   `Depends(require_permission(Permission.X))` as a router-level
+   `dependencies=[...]` entry (not bound to the `principal` parameter's
+   default — see `docs/rbac.md` for why that specific combination is
+   wrong). Adding a new permission means adding it to the
+   `Permission` enum and `ROLE_PERMISSIONS` matrix in
+   `app/core/permissions.py`, not a new `if role == ...` somewhere.
+
+5. **Never store a plaintext API key, refresh token, or verification
+   token** — same rule as database rule 8, extended: `hashed_token`/
+   `hashed_secret` fields, never on a `*Read` schema, and the one-time
+   plaintext response (`APIKeyIssueResponse.api_key`,
+   `TokenPair.refresh_token`) is never persisted anywhere after that
+   response is sent.
+
+6. **Every auth-relevant mutation writes an `AuditEvent` from
+   `app.services.auth_service` (or the relevant endpoint for
+   membership/API-key actions) — never construct the same audit event at
+   more than one call site.** See `docs/security.md` for the full list of
+   audited actions. Adding a new security-sensitive action means adding
+   one `AuditEventCreate` call at its single natural call site, not
+   scattering it across every place that could trigger it.
+
+7. **`POST /auth/password/reset/request` must return the same generic
+   response and write no audit event for an unregistered email.** This is
+   deliberate enumeration resistance (see `docs/security.md`) — do not
+   "fix" it to be more informative.
+
 ## Where things live
 
 ```
@@ -81,6 +144,11 @@ backend/app/
 ├── models/         SQLAlchemy ORM — one file per entity, enums.py, mixins.py
 ├── schemas/         Pydantic Create/Update/Read — never expose ORM models directly
 ├── repositories/     One explicit class per entity, tenant-scoped where applicable
+├── services/        Business orchestration (auth, API keys, email) — the only
+│                     place that constructs multi-step flows across repositories
+├── api/
+│   ├── deps.py        Shared FastAPI dependencies (current user/principal, db session)
+│   └── v1/endpoints/  One router module per resource
 └── db/
     ├── base.py        Declarative Base + naming convention
     ├── session.py      Async engine/session

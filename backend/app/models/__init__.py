@@ -11,9 +11,11 @@ from app.models.finding import Finding
 from app.models.finding_reference import FindingReference
 from app.models.membership import TenantMembership
 from app.models.project import Project
+from app.models.refresh_token import RefreshToken
 from app.models.scan import Scan
 from app.models.tenant import Tenant
 from app.models.user import User
+from app.models.verification_token import UserVerificationToken
 
 __all__ = [
     "APIKeyMetadata",
@@ -23,7 +25,9 @@ __all__ = [
     "FindingReference",
     "TenantMembership",
     "Project",
+    "RefreshToken",
     "Scan",
     "Tenant",
     "User",
+    "UserVerificationToken",
 ]

@@ -47,11 +47,51 @@ class Settings(BaseSettings):
     celery_task_always_eager: bool = False
 
     # JWT / OAuth2
+    # Access and refresh tokens are signed with independent secrets, so a
+    # refresh token can never be replayed as an access token even if a
+    # future code path forgot to check the `type` claim.
     jwt_secret_key: str = "insecure-development-secret-change-me"
+    jwt_refresh_secret_key: str = "insecure-development-refresh-secret-change-me"
     jwt_algorithm: str = "HS256"
+    # `kid` header values, distinct per token type. Not used to select a
+    # key today (single key per type) — carried so multi-key verification
+    # (rotation, JWKS) can be added later without changing token shape.
+    jwt_access_key_id: str = "sentinelx-access-1"
+    jwt_refresh_key_id: str = "sentinelx-refresh-1"
     jwt_access_token_expire_minutes: int = 15
     jwt_refresh_token_expire_days: int = 7
     jwt_issuer: str = "sentinelx.io"
+
+    # Password policy
+    password_min_length: int = 12
+    password_require_uppercase: bool = True
+    password_require_lowercase: bool = True
+    password_require_digit: bool = True
+    password_require_symbol: bool = True
+
+    # Argon2id parameters. Explicit, not left to library defaults, so a
+    # passlib/argon2-cffi upgrade can't silently change the work factor.
+    # Baseline follows current OWASP guidance; tune per deployment.
+    argon2_time_cost: int = 3
+    argon2_memory_cost_kib: int = 65536
+    argon2_parallelism: int = 4
+
+    # Email verification / password reset tokens
+    email_verification_token_expire_hours: int = 24
+    password_reset_token_expire_minutes: int = 30
+    frontend_base_url: str = "http://localhost:3000"
+
+    # Rate limiting — auth-sensitive endpoints (requests per 60s window per
+    # client key; enforced via Redis, see app.core.rate_limit)
+    rate_limit_login_per_minute: int = 5
+    rate_limit_refresh_per_minute: int = 10
+    rate_limit_password_reset_per_minute: int = 3
+    rate_limit_api_key_create_per_minute: int = 5
+
+    # Security response headers
+    security_headers_enabled: bool = True
+    security_hsts_max_age_seconds: int = 63072000  # 2 years
+    security_csp_policy: str = "default-src 'self'"
 
     # Object storage (S3-compatible)
     s3_endpoint_url: str = "http://localhost:9000"

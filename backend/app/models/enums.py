@@ -125,3 +125,14 @@ class APIKeyStatus(StrEnum):
     ACTIVE = "active"
     REVOKED = "revoked"
     EXPIRED = "expired"
+
+
+class RefreshTokenStatus(StrEnum):
+    ACTIVE = "active"
+    ROTATED = "rotated"
+    REVOKED = "revoked"
+
+
+class VerificationTokenPurpose(StrEnum):
+    EMAIL_VERIFICATION = "email_verification"
+    PASSWORD_RESET = "password_reset"

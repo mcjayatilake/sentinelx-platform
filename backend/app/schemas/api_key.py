@@ -1,9 +1,10 @@
 """APIKeyMetadata schemas.
 
-`hashed_secret` never appears on `APIKeyMetadataRead` — that is the whole
-point of this table. Issuing/authenticating keys (and therefore hashing a
-raw secret) is out of scope for this phase; `APIKeyMetadataCreate` takes an
-already-hashed value.
+`hashed_secret` never appears on `APIKeyMetadataRead`, and the plaintext
+key itself only ever appears on `APIKeyIssueResponse` — returned exactly
+once, at creation time, by `app.services.api_key_service`. There is no
+endpoint or repository method that can retrieve a plaintext key after
+that response.
 """
 
 from datetime import datetime
@@ -45,3 +46,21 @@ class APIKeyMetadataRead(BaseModel):
     revoked_at: datetime | None
     created_at: datetime
     updated_at: datetime
+
+
+class APIKeyIssueRequest(BaseModel):
+    name: str
+    scopes: list[str] = []
+    expires_at: datetime | None = None
+
+
+class APIKeyIssueResponse(BaseModel):
+    id: UUID
+    name: str
+    prefix: str
+    # The only time this endpoint (or any endpoint) ever returns the
+    # plaintext key. Store it now — it cannot be recovered later.
+    api_key: str
+    scopes: list[str]
+    expires_at: datetime | None
+    created_at: datetime

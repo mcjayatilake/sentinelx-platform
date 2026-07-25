@@ -32,10 +32,13 @@ enterprise-grade reporting.
 | Continuous monitoring | Scheduled and event-driven re-scanning |
 | Security reporting | Findings, risk scoring, and compliance-ready reports |
 
-This repository currently contains the **project scaffold only** — folder
-structure, configuration, infrastructure, and a minimal running application.
-Feature/business logic for the capabilities above is implemented
-incrementally in follow-up work.
+This repository currently contains the **project scaffold, multi-tenant
+database foundation, and authentication/authorization layer** — folder
+structure, configuration, infrastructure, persistence, and a production
+JWT/refresh-token/RBAC/API-key auth system (see
+[`docs/authentication.md`](docs/authentication.md)). Feature/business
+logic for the scanning capabilities above is implemented incrementally in
+follow-up work.
 
 ## Tech stack
 
@@ -48,7 +51,7 @@ incrementally in follow-up work.
 | Workers | Celery (+ Celery Beat, Flower) |
 | Container runtime | Docker |
 | Object storage | S3-compatible (MinIO locally) |
-| AuthN/AuthZ | JWT, OAuth2, refresh tokens |
+| AuthN/AuthZ | Argon2id, JWT access + rotating refresh tokens, RBAC, API keys (OAuth2 SSO planned) |
 | Deployment | Docker Compose (local), Kubernetes (staging/production) |
 
 ## Repository layout
@@ -138,10 +141,17 @@ make typecheck          # run mypy + tsc
 
 - [Architecture](docs/architecture/ARCHITECTURE.md)
 - [Security & Authorization Model](docs/architecture/SECURITY.md)
+- [Authentication](docs/authentication.md)
+- [API Keys](docs/api-keys.md)
+- [RBAC](docs/rbac.md)
+- [Security (auth layer)](docs/security.md)
 - [Database Architecture](docs/database-architecture.md)
 - [Data Model](docs/data-model.md)
 - [Tenant Isolation Strategy](docs/tenant-isolation.md)
 - [ADR 0001: Tenant Isolation & RLS](docs/decisions/0001-tenant-isolation-and-rls.md)
+- [ADR 0002: Authentication Strategy](docs/decisions/0002-authentication-strategy.md)
+- [ADR 0003: JWT Strategy](docs/decisions/0003-jwt-strategy.md)
+- [ADR 0004: Refresh Token Strategy](docs/decisions/0004-refresh-token-strategy.md)
 - [Local Development — Database](docs/local-development.md)
 - [Coding Standards](docs/CODING_STANDARDS.md)
 - [Contributing](docs/CONTRIBUTING.md)
