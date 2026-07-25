@@ -1,15 +1,17 @@
 """User — a platform identity. Not tenant-owned; tenancy is via TenantMembership.
 
-No password or OAuth fields yet — authentication is implemented in a later
-phase.
+`hashed_password` is nullable: an OAuth-only user (future SSO integration)
+may never have a local password. Never store, log, or return the plaintext
+password anywhere — see `app.core.security` for hashing.
 """
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import TYPE_CHECKING
 
+from sqlalchemy import DateTime, Integer, String
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy import String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -39,6 +41,18 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=False,
         default=UserStatus.ACTIVE,
         server_default=UserStatus.ACTIVE.value,
+    )
+    # Argon2id hash (see app.core.security.hash_password). Nullable for
+    # future OAuth-only accounts.
+    hashed_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Bumped to invalidate every previously-issued access token at once
+    # (password change, "log out everywhere", suspected compromise) —
+    # embedded as the `ver` claim and checked on every request.
+    token_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    email_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
     memberships: Mapped[list[TenantMembership]] = relationship(back_populates="user")

@@ -16,6 +16,15 @@ NAMING_CONVENTION = {
 
 class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
+    # Server-generated/`onupdate` column values (created_at, updated_at)
+    # are fetched back via RETURNING as part of the same INSERT/UPDATE,
+    # instead of being marked expired-pending-refresh. Without this, an
+    # attribute access on such a column after a flush — e.g. serializing
+    # to a Pydantic schema right after a service-layer create-then-update
+    # in one request — raises `MissingGreenlet`: AsyncSession only allows
+    # DB IO from an awaited call, and a later plain attribute access
+    # isn't one.
+    __mapper_args__ = {"eager_defaults": True}
 
 
 # Import domain models here (or in their own modules re-exported through

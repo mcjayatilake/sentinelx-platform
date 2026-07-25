@@ -11,7 +11,9 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.api.v1.router import api_router
 from app.core.config import get_settings
+from app.core.error_handlers import register_error_handlers
 from app.core.logging import configure_logging, get_logger
+from app.core.security_headers import SecurityHeadersMiddleware
 from app.db.session import engine
 
 settings = get_settings()
@@ -37,6 +39,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+register_error_handlers(app)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.backend_cors_origins,
@@ -44,6 +48,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(SecurityHeadersMiddleware)
 
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):

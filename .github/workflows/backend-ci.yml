@@ -73,6 +73,7 @@ jobs:
       DATABASE_URL: postgresql+asyncpg://sentinelx:sentinelx@localhost:5432/sentinelx_migrations
       DATABASE_URL_SYNC: postgresql+psycopg://sentinelx:sentinelx@localhost:5432/sentinelx_migrations
       JWT_SECRET_KEY: ci-test-secret
+      JWT_REFRESH_SECRET_KEY: ci-test-refresh-secret
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -122,6 +123,7 @@ jobs:
       CELERY_BROKER_URL: redis://localhost:6379/1
       CELERY_RESULT_BACKEND: redis://localhost:6379/2
       JWT_SECRET_KEY: ci-test-secret
+      JWT_REFRESH_SECRET_KEY: ci-test-refresh-secret
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

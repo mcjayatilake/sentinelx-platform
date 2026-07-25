@@ -1,15 +1,20 @@
 """TenantMembership repository — tenant-scoped.
 
-Every read method requires `tenant_id` and filters on it explicitly, so a
-membership belonging to a different tenant is structurally unreachable
-through `get_by_id` even when the caller has a valid membership UUID.
+Every tenant-facing read method requires `tenant_id` and filters on it
+explicitly, so a membership belonging to a different tenant is
+structurally unreachable through `get_by_id` even when the caller has a
+valid membership UUID. `list_by_user` is the one deliberate exception —
+it's how login resolves *which* tenants a user may authenticate into, so
+it is necessarily keyed by user, not tenant.
 """
 
 import uuid
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
+from app.models.enums import MembershipStatus
 from app.models.membership import TenantMembership
 from app.repositories.base import Page
 from app.schemas.common import PaginationParams
@@ -62,6 +67,21 @@ class TenantMembershipRepository:
         )
         items = list((await self._session.execute(stmt)).scalars().all())
         return Page(items=items, total=total, limit=pagination.limit, offset=pagination.offset)
+
+    async def list_by_user(self, user_id: uuid.UUID) -> list[TenantMembership]:
+        """Every active membership for a user, tenant eagerly loaded — used
+        by login to resolve which tenant to sign into (or to list the
+        choices when there's more than one)."""
+        stmt = (
+            select(TenantMembership)
+            .where(
+                TenantMembership.user_id == user_id,
+                TenantMembership.status == MembershipStatus.ACTIVE,
+            )
+            .options(joinedload(TenantMembership.tenant))
+            .order_by(TenantMembership.created_at)
+        )
+        return list((await self._session.execute(stmt)).scalars().unique().all())
 
     async def update(
         self, membership: TenantMembership, data: TenantMembershipUpdate

@@ -39,18 +39,31 @@ not just a legal disclaimer:
 
 ## 3. AuthN / AuthZ
 
+**Implemented** — see [`docs/authentication.md`](../authentication.md),
+[`docs/rbac.md`](../rbac.md), [`docs/api-keys.md`](../api-keys.md), and
+[`docs/security.md`](../security.md) for the full design and ADRs
+0002–0004 for the decisions behind it. Summary:
+
 - **JWT access tokens**: short-lived (default 15 minutes), signed with a
-  strong secret/asymmetric key, validated on every request.
-- **Refresh tokens**: long-lived, stored hashed, rotated on use, and
-  revocable (e.g. on logout, password change, or suspected compromise).
-- **OAuth2**: authorization-code flow with PKCE for SSO providers; the
-  platform never stores third-party IdP passwords.
-- **RBAC**: roles are scoped per organization (e.g. Owner, Admin, Member,
-  Read-only). Sensitive actions (launching active scans, inviting members,
-  rotating API keys) require elevated roles.
+  strong secret (independent secret from refresh tokens), validated on
+  every request, individually revocable via a Redis logout denylist and
+  bulk-revocable via `User.token_version`.
+- **Refresh tokens**: long-lived, stored hashed (SHA-256, not Argon2id —
+  see ADR 0004), rotated on every use with family-wide reuse-detection
+  revocation, and revocable (logout, password change, "log out
+  everywhere", or detected compromise).
+- **RBAC**: roles are scoped per tenant (`Owner`, `Administrator`,
+  `Security Analyst`, `Developer`, `Viewer`), enforced by a single
+  `require_permission` dependency against a `Permission` matrix — no
+  endpoint hand-rolls a role check.
+- **OAuth2**: authorization-code flow with PKCE for SSO providers is
+  **not yet implemented** — config placeholders exist from the scaffold
+  phase; email/password plus API keys are the current auth surface. The
+  platform will never store third-party IdP passwords once added.
 - Secrets (JWT signing keys, OAuth client secrets, database credentials,
   storage keys) are supplied via environment variables / secret managers,
-  never committed to source control.
+  never committed to source control; no shipped default is
+  production-usable (see `.env.example`).
 
 ## 4. Secrets & credential handling
 
@@ -96,9 +109,17 @@ not just a legal disclaimer:
   state-changing transactions) require explicit opt-in configuration per
   asset before the AI testing module will attempt them.
 
-## 9. This scaffold's current state
+## 9. Current implementation state
 
-No authentication, tenancy, or scanning logic is implemented yet. This
-document defines the guardrails that must be enforced as those features are
-built, and should be treated as binding design constraints during
-implementation and code review — not retrofitted later.
+Tenancy (database-layer isolation — see
+[`docs/tenant-isolation.md`](../tenant-isolation.md)) and authentication/
+authorization (this document's section 3, fully implemented — see
+[`docs/authentication.md`](../authentication.md)) are built. No scanning,
+authorization-record, or active-testing logic is implemented yet — the
+guardrails in sections 1, 2 (asset/scan-specific parts), 4–8 remain
+binding design constraints for that future work, not retrofitted later.
+RLS (row-level security) remains a deferred decision — see
+[ADR 0001](../decisions/0001-tenant-isolation-and-rls.md); this phase
+satisfies that ADR's stated trigger condition (an authenticated
+request/session layer now exists) without itself revisiting the
+decision.
